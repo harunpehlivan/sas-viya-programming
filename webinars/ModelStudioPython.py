@@ -73,8 +73,8 @@ pred = model.predict_proba(X)
 
 # Create new columns on original dataset
 target = 'BAD'
-df['P_' + target + '1'] = pred[:,1]
-df['P_' + target + '0'] = pred[:,0]
+df[f'P_{target}1'] = pred[:,1]
+df[f'P_{target}0'] = pred[:,0]
 
 ##############################
 ##### DO NOT TOUCH BELOW #####
