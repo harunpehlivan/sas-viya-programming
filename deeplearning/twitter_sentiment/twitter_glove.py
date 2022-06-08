@@ -16,7 +16,7 @@ def process_hashtag(hashtag):  # Split hashtags on uppercase letters
     #TODO - recognize all caps words and don't split them
     hashtag_body = hashtag.group(0)[1:]
     if re.search('[A-Z]', hashtag_body) and hashtag_body.upper() == hashtag_body:
-        return "<hashtag> " + hashtag_body.lower() + " <allcaps>"
+        return f"<hashtag> {hashtag_body.lower()} <allcaps>"
     else:
         return "<hashtag>" + re.sub(r"([A-Z])", r" \1", hashtag_body).lower()
 
@@ -55,7 +55,12 @@ def normalize(tweet):
            r"\1\2 <elong>",
            tweet)
 
-    tweet = re.sub(r"([A-Z]){2,}", lambda word: word.group(0).lower() + " <allcaps> ", tweet)
+    tweet = re.sub(
+        r"([A-Z]){2,}",
+        lambda word: f"{word.group(0).lower()} <allcaps> ",
+        tweet,
+    )
+
 
     #Not sure why this was missing. Code to add spaces between tokens that normally are given together to make
     #tokenization easier
@@ -84,7 +89,7 @@ if __name__ == "__main__":
                                '<neutralface>', '<neutralface>', '<heart>', '<number>', '<number>', '<hashtag>',
                                'this', 'is', 'a', 'hashtag', '!', '<repeat>', 'waho', '<elong>', '!', 'yeee',
                                '<allcaps>', 'haw', 'yeeehaw', '<allcaps>', '<hashtag>', 'allcaps', '<allcaps>', '']):
-        assert token==expected, token+"!="+expected
+        assert token==expected, f"{token}!={expected}"
 
     tweet = "!!! overhaul:  2001:death-6 #1hashtag #AHASHTAG. &:) #1201"
     print(normalize(tweet))

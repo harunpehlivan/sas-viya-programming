@@ -791,26 +791,25 @@ def segments(tab):
 # impute params takes in subsetted global base table, imputed table name
 def impute_params(tbl, out, replace=True):
 
-    p = dict(table=tbl,
-             outVarsNamePrefix = 'IMP', 
-             methodContinuous = 'MEDIAN', 
-             methodNominal = 'MODE', 
-             copyAllVars = True, 
-             casOut= dict(name=out, replace=replace)
-            )
-    return p
+    return dict(
+        table=tbl,
+        outVarsNamePrefix='IMP',
+        methodContinuous='MEDIAN',
+        methodNominal='MODE',
+        copyAllVars=True,
+        casOut=dict(name=out, replace=replace),
+    )
 
 # takes in imputed table name, out table name
 def partition_params(tbl_name, out, samppct = 70, replace=True):
 
-    p = dict(
+    return dict(
         table=tbl_name,
-    samppct = samppct,
-    partind = True,
-    seed    = 1,
-    output  = dict(casOut = dict(name=out, replace=replace), copyVars = 'ALL')
-)
-    return p
+        samppct=samppct,
+        partind=True,
+        seed=1,
+        output=dict(casOut=dict(name=out, replace=replace), copyVars='ALL'),
+    )
 
 def get_model_segments(tab, segments):
     # are we using each model:  'Yes' or 'No'
@@ -900,19 +899,19 @@ def set_model_params(tab, segment, inputs_c, inputs_n, tgt_type):
     def set_score_params(tbl, target, model):
         
         return dict(
-            table      = tbl.query("_partind_ = 0"),
-            modelTable = model + '_model',
-            copyVars   = [target, '_partind_'],
-            casOut     = dict(name = '_scored_' + model, replace = True),
-            assessOneRow = True
+            table=tbl.query("_partind_ = 0"),
+            modelTable=f'{model}_model',
+            copyVars=[target, '_partind_'],
+            casOut=dict(name=f'_scored_{model}', replace=True),
+            assessOneRow=True,
         )
     
     def set_assess_params(target, model, ptarget):
         return dict(
-        table    = dict(name = '_scored_' + model, where = '_partind_ = 0'),     # the where = '_partind_ = 0' not necessary
-        response = target,
-        inputs = ptarget,
-        event = '1'
+            table=dict(name=f'_scored_{model}', where='_partind_ = 0'),
+            response=target,
+            inputs=ptarget,
+            event='1',
         )
     
     '''
@@ -1018,12 +1017,11 @@ def set_model_params(tab, segment, inputs_c, inputs_n, tgt_type):
 # Function definitions for AutoML
 # -----------------------------------------------
 def executeRestCall(urlPrefix, method, uri, requestBody, headers, fullResponse=False):
-    response = requests.request(method, 'http://' + urlPrefix + uri, json=requestBody, headers=headers)
-    response_txt = response.text
+    response = requests.request(
+        method, f'http://{urlPrefix}{uri}', json=requestBody, headers=headers
+    )
 
-    #if response.status_code >= 400:
-        #print("Error in executeRestCall with status_code: " + str(response.status_code))
-        #print(response_txt)
+    response_txt = response.text
 
     if fullResponse:
         return response, json.loads(response_txt)
@@ -1031,18 +1029,24 @@ def executeRestCall(urlPrefix, method, uri, requestBody, headers, fullResponse=F
         return json.loads(response_txt)
 
 def executeRestCallWithPayload(urlPrefix, method, uri, payload, headers):
-    response = requests.request(method, 'http://' + urlPrefix + uri, data=payload, headers=headers)
+    response = requests.request(
+        method, f'http://{urlPrefix}{uri}', data=payload, headers=headers
+    )
+
     response_txt = response.text
 
     if response.status_code >= 400:
-        print("Error in executeRestCallWithPayload with status_code: " + str(response.status_code))
+        print(
+            f"Error in executeRestCallWithPayload with status_code: {str(response.status_code)}"
+        )
+
         print(response_txt)
 
     return json.loads(response_txt)
 
 def getOauthToken(urlPrefix, authCred):
     tokenUri = "/SASLogon/oauth/token"
-    payload = "grant_type=" + authCred
+    payload = f"grant_type={authCred}"
     headers = {
         'accept': "application/json",
         'content-type': "application/x-www-form-urlencoded",
@@ -1062,7 +1066,7 @@ def train_non_swat_model(segment, tab, authUser, authPw, urlPrefix):
         df = df.select_dtypes(exclude=['object'])
         imputed_cols = [col for col in df.columns if "IMP" in col]
         df = df[imputed_cols]
-        target = "IMP_" + tab.children[0].children[3].children[0].children[0].value
+        target = f"IMP_{tab.children[0].children[3].children[0].children[0].value}"
         imputed_cols.remove(target)
         X_train = df[imputed_cols]
         y_train = df[target]
@@ -1082,13 +1086,14 @@ def train_non_swat_model(segment, tab, authUser, authPw, urlPrefix):
             act = 'tanh'
         else:
             act = 'exponential'
-        hid_layers = list()
         hid_num = 4
         if segment['train_params']['tf_hidden'] != '':
             hid_num = int(segment['train_params']['tf_hidden'])
-        for hidden in range(hid_num):
-            hid_layers.append(tf.keras.layers.Dense(units=32, activation = act))
-            
+        hid_layers = [
+            tf.keras.layers.Dense(units=32, activation=act)
+            for _ in range(hid_num)
+        ]
+
         model = tf.keras.models.Sequential([tf.keras.layers.Dense(units=128, activation = act,input_shape=(X_train.shape[-1],))] + 
                                    hid_layers + 
                                    [tf.keras.layers.Dense(1, activation = 'sigmoid')])
@@ -1106,22 +1111,37 @@ def train_non_swat_model(segment, tab, authUser, authPw, urlPrefix):
         model.fit(X_train,y_train, epochs=9, verbose=0)
     elif segment['model'] == 'AutoML':
         
-        var_list = list()
-        for col in list(segment['session'].CASTable(tab.children[0].children[1].value, caslib='Public').columns):
-            var_list.append({"name" : col})
-        
-        projectName = 'MLPA_test_' + str(random.randint(1,100)) + random.choice(string.ascii_letters)
-        segment['session'].table.partition(table={'name' : segment['segment_tbl'].name, 
-                                                            "vars" : var_list, "where" : "_PartInd_ = 1"}, 
-                                           casout={'name' : projectName + "_Train", 
-                                                   'promote' : True, 'caslib' : 'CASUSER({})'.format(authUser)})
+        var_list = [
+            {"name": col}
+            for col in list(
+                segment['session']
+                .CASTable(tab.children[0].children[1].value, caslib='Public')
+                .columns
+            )
+        ]
+
+        projectName = f'MLPA_test_{random.randint(1, 100)}{random.choice(string.ascii_letters)}'
+
+        segment['session'].table.partition(
+            table={
+                'name': segment['segment_tbl'].name,
+                "vars": var_list,
+                "where": "_PartInd_ = 1",
+            },
+            casout={
+                'name': f"{projectName}_Train",
+                'promote': True,
+                'caslib': f'CASUSER({authUser})',
+            },
+        )
+
         # -----------------------------------------------
         # Get authentication token
         # -----------------------------------------------
-        authCred = 'password&username=' + authUser + '&password=' + authPw
+        authCred = f'password&username={authUser}&password={authPw}'
         oauthToken = getOauthToken(urlPrefix, authCred)
 
-        
+
 
         # -----------------------------------------------
         # REST request for creating MLPA project
@@ -1133,19 +1153,26 @@ def train_non_swat_model(segment, tab, authUser, authPw, urlPrefix):
             'Content-Type': "application/json"
         }
         payload = {
-            'dataTableUri': '/dataTables/dataSources/cas~fs~cas-shared-default~fs~CASUSER({})/tables/'.format(authUser) + projectName + "_Train",
+            'dataTableUri': f'/dataTables/dataSources/cas~fs~cas-shared-default~fs~CASUSER({authUser})/tables/'
+            + projectName
+            + "_Train",
             'type': 'predictive',
             'name': projectName,
             'description': 'Project generated for test',
             'settings': {
                 'autoRun': True,
                 'modelingMode': 'Standard',
-                'maxModelingTime': segment['train_params']['ntime']
+                'maxModelingTime': segment['train_params']['ntime'],
             },
             'analyticsProjectAttributes': {
-                'targetVariable': tab.children[0].children[3].children[0].children[0].value
-            }
+                'targetVariable': tab.children[0]
+                .children[3]
+                .children[0]
+                .children[0]
+                .value
+            },
         }
+
 
         payload_data = json.dumps(payload, indent=4)
 
@@ -1164,10 +1191,10 @@ def train_non_swat_model(segment, tab, authUser, authPw, urlPrefix):
         segment["projectStateLink"] = projectStateLink
         segment["oauthToken"] = oauthToken
         segment['projectName'] = projectName
-        
-        
-        
-        
+
+
+
+
     segment['modelObj'] = model
 
 def publish_automl(segment, tab, authUser, authPw, urlPrefix):
@@ -1177,13 +1204,18 @@ def publish_automl(segment, tab, authUser, authPw, urlPrefix):
             'Authorization': segment["oauthToken"],
             'Accept': segment["projectStateLink"]["type"]
     }
-    
+
     import time
     attempts = 0
     maxAttempts = 60*60/5
     while True:
         attempts = attempts + 1
-        projectState = requests.request(segment["projectStateLink"]["method"], 'http://' + urlPrefix + segment["projectStateLink"]["uri"], headers=headers).text
+        projectState = requests.request(
+            segment["projectStateLink"]["method"],
+            f'http://{urlPrefix}' + segment["projectStateLink"]["uri"],
+            headers=headers,
+        ).text
+
 
         if projectState == "completed" or projectState == "failed" or attempts > maxAttempts:
             break;
@@ -1202,7 +1234,7 @@ def publish_automl(segment, tab, authUser, authPw, urlPrefix):
     try:
         s_text = champModel['items'][0]['data'][0]['dataMap']['contents']
         result = re.search('<p>(.*)</p>', s_text)
-        text = result.group(1).split('</p>')[0]
+        text = result[1].split('</p>')[0]
         segment['_text'] = text
     except:
         print("couldn't create automl model")
@@ -1219,9 +1251,12 @@ def publish_automl(segment, tab, authUser, authPw, urlPrefix):
 
     publishChampModelResponse = requests.request(
         publishChampModelLink["method"],
-        'http://' + urlPrefix + publishChampModelLink["uri"].replace('{destinationName}', 'cas'),
-        json={"name" : segment['projectName'] + "_Model"},
-        headers=headers)
+        f'http://{urlPrefix}'
+        + publishChampModelLink["uri"].replace('{destinationName}', 'cas'),
+        json={"name": segment['projectName'] + "_Model"},
+        headers=headers,
+    )
+
 
     if publishChampModelResponse.status_code != 200:
         #print("Error in publish champion model call, status_code: " + str(publishChampModelResponse.status_code))
@@ -1233,17 +1268,30 @@ def publish_automl(segment, tab, authUser, authPw, urlPrefix):
 
     while True:
         try:
-            model_tbl = segment['session'].loadtable(path='sas_model_table.sashdat',caslib='Public',casout={"caslib" : "CASUSER({})".format(authUser)})
+            model_tbl = segment['session'].loadtable(
+                path='sas_model_table.sashdat',
+                caslib='Public',
+                casout={"caslib": f"CASUSER({authUser})"},
+            )
+
             segment['modelObj'] = model_tbl["casTable"][model_tbl["casTable"]['Notes'].str.contains(segment['projectName'])]["ModelName"].values[0]
             break;
         except:
-            segment['session'].table.droptable(caslib='CASUSER({})'.format(authUser),name='sas_model_table')
+            segment['session'].table.droptable(
+                caslib=f'CASUSER({authUser})', name='sas_model_table'
+            )
+
             # model takes time to show up in cas table so wait for 10 secs
             time.sleep(10)
 
-    
-    segment['session'].table.droptable(caslib='CASUSER({})'.format(authUser),name='sas_model_table')
-    segment['session'].table.droptable(caslib='CASUSER({})'.format(authUser),name=segment['projectName'] + "_Train")
+
+    segment['session'].table.droptable(
+        caslib=f'CASUSER({authUser})', name='sas_model_table'
+    )
+
+    segment['session'].table.droptable(
+        caslib=f'CASUSER({authUser})', name=segment['projectName'] + "_Train"
+    )
 
 def create_lift(outcome, model_proba, precision = 2):
     """
@@ -1279,7 +1327,7 @@ def score_non_swat_model(segment, tab, authUser):
     df = df.select_dtypes(exclude=['object'])
     imputed_cols = [col for col in df.columns if "IMP" in col]
     df = df[imputed_cols]
-    target = "IMP_" + tab.children[0].children[3].children[0].children[0].value
+    target = f"IMP_{tab.children[0].children[3].children[0].children[0].value}"
     imputed_cols.remove(target)
     X_test = df[imputed_cols]
     y_test = df[target].tolist()
@@ -1304,30 +1352,67 @@ def score_non_swat_model(segment, tab, authUser):
         segment['session'].loadactionset('modelpublishing')
         tbl_test = segment['segment_tbl'].query('_PartInd_ = 0')
         y_test = tbl_test[tab.children[0].children[3].children[0].children[0].value].values.tolist()
-        var_list = list()
-        for col in list(segment['session'].CASTable(tab.children[0].children[1].value, caslib='Public').columns):
-            var_list.append({"name" : col})
-        model_tbl = segment['session'].loadtable(path='sas_model_table.sashdat',caslib='Public', casout={"caslib" : "CASUSER({})".format(authUser)})
-        segment['session'].table.partition(table={'name' : tbl_test.name, 
-                                                            "vars" : var_list, "where" : "_PartInd_ = 0"}, 
-                                           casout={'name' : tbl_test.name + "Test", 
-                                                   'promote' : True, 'caslib' : 'CASUSER({})'.format(authUser)})
+        var_list = [
+            {"name": col}
+            for col in list(
+                segment['session']
+                .CASTable(tab.children[0].children[1].value, caslib='Public')
+                .columns
+            )
+        ]
+
+        model_tbl = segment['session'].loadtable(
+            path='sas_model_table.sashdat',
+            caslib='Public',
+            casout={"caslib": f"CASUSER({authUser})"},
+        )
+
+        segment['session'].table.partition(
+            table={
+                'name': tbl_test.name,
+                "vars": var_list,
+                "where": "_PartInd_ = 0",
+            },
+            casout={
+                'name': f"{tbl_test.name}Test",
+                'promote': True,
+                'caslib': f'CASUSER({authUser})',
+            },
+        )
+
         try:
             segment['session'].table.droptable(caslib='Public', name='lgdemoscore')
         except:
             pass
         print("model Object", segment['modelObj'])
-        y_predicted = segment['session'].modelpublishing.runmodellocal(intable={'name': tbl_test.name + "Test", 
-                                                                                "caslib" : 'CASUSER({})'.format(authUser)},
-                                modelName= segment['modelObj'],
-                                modeltable={'caslib': 'CASUSER({})'.format(authUser),'name': 'sas_model_table'},
-                                outtable={'caslib':'Public','name':'lgdemoscore'})
-        segment['session'].table.droptable(caslib='CASUSER({})'.format(authUser),name='sas_model_table')
+        y_predicted = segment['session'].modelpublishing.runmodellocal(
+            intable={
+                'name': f"{tbl_test.name}Test",
+                "caslib": f'CASUSER({authUser})',
+            },
+            modelName=segment['modelObj'],
+            modeltable={
+                'caslib': f'CASUSER({authUser})',
+                'name': 'sas_model_table',
+            },
+            outtable={'caslib': 'Public', 'name': 'lgdemoscore'},
+        )
+
+        segment['session'].table.droptable(
+            caslib=f'CASUSER({authUser})', name='sas_model_table'
+        )
+
         y_predicted = segment['session'].CASTable('lgdemoscore', caslib='Public').to_frame()
         y_predicted.columns = y_predicted.columns.str.upper()
-        y_predicted = y_predicted['P_' + tab.children[0].children[3].children[0].children[0].value.upper() + '1'].values
-        
-        segment['session'].table.droptable(caslib='CASUSER({})'.format(authUser),name=tbl_test.name + "Test")
+        y_predicted = y_predicted[
+            f'P_{tab.children[0].children[3].children[0].children[0].value.upper()}1'
+        ].values
+
+
+        segment['session'].table.droptable(
+            caslib=f'CASUSER({authUser})', name=f"{tbl_test.name}Test"
+        )
+
         fpr, tpr, _ = roc_curve(y_test, y_predicted)
         ROCInfo = dict(FPR = fpr, Sensitivity = tpr)
         segment['ROCInfo'] = ROCInfo
@@ -1338,7 +1423,7 @@ def score_non_swat_model(segment, tab, authUser):
         segment['ROCInfo'] = None
         segment['LIFTInfo'] = None
         segment['misclassification'] = None
-    
+
 
     yTestActual = y_test
     yTestPredict = y_predicted
@@ -1346,8 +1431,11 @@ def score_non_swat_model(segment, tab, authUser):
     data = [(None, None),
             (None, None),
             (yTestActual, yTestPredict)]
-    # Define a directory where all the files for model manager will be kept 
-    MODEL_DIR = 'automate/{}_{}-{}'.format(segment['model'], segment['region'], segment['handset'])
+    # Define a directory where all the files for model manager will be kept
+    MODEL_DIR = (
+        f"automate/{segment['model']}_{segment['region']}-{segment['handset']}"
+    )
+
 
 
     if os.path.exists(MODEL_DIR):
@@ -1357,34 +1445,38 @@ def score_non_swat_model(segment, tab, authUser):
     JSONFiles.calculateFitStat(data, MODEL_DIR)
     JSONFiles.generateROCStat(data, target, MODEL_DIR)
     JSONFiles.generateLiftStat(data, target, 1, MODEL_DIR)
-    
+
     segment['score_params'] = None
     segment['assess_params'] = None
 
 def load_assess_files(segment):
-    if segment["model"] != 'Logistic Regression':
-        cols = segment['session'].CASTable(segment['score_params']['casOut']['name']).columns
-        df = segment['session'].CASTable(segment['score_params']['casOut']['name'])[[cols[0],cols[-2]]].to_frame()
-        df.dropna(inplace=True)
-        yTestActual = df[cols[0]].tolist()
-        yTestPredict = df[cols[-2]].tolist()
-        
-        
-        data = [(None, None),
-                (None, None),
-                (yTestActual, yTestPredict)]
-        # Define a directory where all the files for model manager will be kept 
-        MODEL_DIR = 'automate/{}_{}-{}'.format(segment['model'], segment['region'], segment['handset'])
+    if segment["model"] == 'Logistic Regression':
+        return
+    cols = segment['session'].CASTable(segment['score_params']['casOut']['name']).columns
+    df = segment['session'].CASTable(segment['score_params']['casOut']['name'])[[cols[0],cols[-2]]].to_frame()
+    df.dropna(inplace=True)
+    yTestActual = df[cols[0]].tolist()
+    yTestPredict = df[cols[-2]].tolist()
 
-        
-        if os.path.exists(MODEL_DIR):
-            shutil.rmtree(MODEL_DIR)
-        os.makedirs(MODEL_DIR)
-        JSONFiles = pzmm.JSONFiles()
-        target = cols[0]
-        JSONFiles.calculateFitStat(data, MODEL_DIR)
-        JSONFiles.generateROCStat(data, target, MODEL_DIR)
-        JSONFiles.generateLiftStat(data, target, 1, MODEL_DIR)
+
+    data = [(None, None),
+            (None, None),
+            (yTestActual, yTestPredict)]
+        # Define a directory where all the files for model manager will be kept 
+    MODEL_DIR = (
+        f"automate/{segment['model']}_{segment['region']}-{segment['handset']}"
+    )
+
+
+
+    if os.path.exists(MODEL_DIR):
+        shutil.rmtree(MODEL_DIR)
+    os.makedirs(MODEL_DIR)
+    JSONFiles = pzmm.JSONFiles()
+    target = cols[0]
+    JSONFiles.calculateFitStat(data, MODEL_DIR)
+    JSONFiles.generateROCStat(data, target, MODEL_DIR)
+    JSONFiles.generateLiftStat(data, target, 1, MODEL_DIR)
 
     
 def get_models(tab):
@@ -1405,5 +1497,4 @@ def get_models(tab):
             'XGBoost': tab.children[7].children[0].value, 
             'TensorFlow': tab.children[8].children[0].value
            }
-    models = [key for key,value in use_.items() if value == 'Yes']
-    return models
+    return [key for key,value in use_.items() if value == 'Yes']
